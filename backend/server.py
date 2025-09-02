@@ -151,17 +151,16 @@ async def generate_image(
             error=f"Error generating image: {str(e)}"
         )
 
-@app.post("/analyze-images")
-async def analyze_images(
-    prompt: str = Form(...),
+
+@app.post("/try-on-clothes")
+async def try_on_clothes(
     images: List[UploadFile] = File(...)
 ):
     """
-    Analyze uploaded images using Gemini Vision API
+    Virtual try-on using Gemini AI - make the person wear the provided clothes
     
     Args:
-        prompt: Question or instruction about the images
-        images: List of images to analyze
+        images: List of images containing person and clothing items
     """
     try:
         if not images:
@@ -173,112 +172,90 @@ async def analyze_images(
             processed_image = process_uploaded_image(uploaded_file)
             processed_images.append(processed_image)
         
-        # Prepare content for analysis
+        # Create the try-on prompt
+        prompt = "Make the person wear the clothes shown in these images. Create a realistic visualization of how the clothing items would look when worn by the person, maintaining proper fit, proportions, and styling."
+        
+        # Prepare content for Gemini
         contents = [prompt]
         contents.extend(processed_images)
         
-        # Analyze images
+        # Generate the try-on visualization
         response = client.models.generate_content(
             model="gemini-2.5-flash-image-preview",
             contents=contents
         )
         
-        # Extract text response
-        analysis_text = None
+        # Process response - check for both generated image and text description
+        generated_image_base64 = None
+        description_text = None
+        
         for part in response.candidates[0].content.parts:
             if part.text is not None:
-                analysis_text = part.text
-                break
+                description_text = part.text
+            elif part.inline_data is not None:
+                image = Image.open(io.BytesIO(part.inline_data.data))
+                generated_image_base64 = image_to_base64(image)
         
         return {
             "success": True,
-            "analysis": analysis_text if analysis_text else "No analysis generated",
-            "image_count": len(processed_images)
+            "generated_image_base64": generated_image_base64,
+            "description": description_text if description_text else "Try-on visualization generated",
+            "images_processed": len(processed_images)
         }
         
     except Exception as e:
         return {
             "success": False,
-            "error": f"Error analyzing images: {str(e)}"
+            "error": f"Error generating try-on visualization: {str(e)}"
         }
 
-@app.post("/suggest-outfit")
-async def suggest_outfit(
-    occasion: str = Form(...),
-    weather: str = Form(default="mild"),
-    style_preference: str = Form(default="casual"),
-    wardrobe_images: List[UploadFile] = File(default=[])
+@app.post("/extract-clothing")
+async def extract_clothing(
+    image: UploadFile = File(...)
 ):
     """
-    Suggest outfit combinations based on wardrobe images and preferences
+    Extract clothing item from photo and create professional product image
     
     Args:
-        occasion: The occasion for the outfit (work, casual, formal, etc.)
-        weather: Weather conditions (hot, cold, rainy, mild)
-        style_preference: Preferred style (casual, formal, trendy, classic)
-        wardrobe_images: Images of clothing items in the wardrobe
+        image: Single image containing a clothing item
     """
     try:
-        prompt = f"""
-        Analyze the provided wardrobe images and suggest outfit combinations for the following:
+        # Process uploaded image
+        processed_image = process_uploaded_image(image)
         
-        Occasion: {occasion}
-        Weather: {weather}
-        Style Preference: {style_preference}
+        # Create the extraction prompt
+        prompt = "Take the clothing item in this photo and make a full view image of the item with a white background as a professionally shot image for a clothing item on an online store."
         
-        Please provide:
-        1. Recommended outfit combinations from the visible clothing items
-        2. Styling tips for the occasion and weather
-        3. Color coordination suggestions
-        4. Any missing pieces that would complete the outfit
+        # Prepare content for Gemini
+        contents = [prompt, processed_image]
         
-        Be specific about which items from the images work well together.
-        """
-        
-        # Process wardrobe images
-        processed_images = []
-        if wardrobe_images:
-            for uploaded_file in wardrobe_images:
-                if uploaded_file.filename:
-                    processed_image = process_uploaded_image(uploaded_file)
-                    processed_images.append(processed_image)
-        
-        if not processed_images:
-            return {
-                "success": False,
-                "error": "No wardrobe images provided"
-            }
-        
-        # Prepare content
-        contents = [prompt]
-        contents.extend(processed_images)
-        
-        # Get suggestions
+        # Generate the professional product image
         response = client.models.generate_content(
             model="gemini-2.5-flash-image-preview",
             contents=contents
         )
         
-        # Extract text response
-        suggestions_text = None
+        # Process response - check for both generated image and text description
+        generated_image_base64 = None
+        description_text = None
+        
         for part in response.candidates[0].content.parts:
             if part.text is not None:
-                suggestions_text = part.text
-                break
+                description_text = part.text
+            elif part.inline_data is not None:
+                image_data = Image.open(io.BytesIO(part.inline_data.data))
+                generated_image_base64 = image_to_base64(image_data)
         
         return {
             "success": True,
-            "suggestions": suggestions_text if suggestions_text else "No suggestions generated",
-            "wardrobe_items_analyzed": len(processed_images),
-            "occasion": occasion,
-            "weather": weather,
-            "style_preference": style_preference
+            "generated_image_base64": generated_image_base64,
+            "description": description_text if description_text else "Professional clothing product image generated"
         }
         
     except Exception as e:
         return {
             "success": False,
-            "error": f"Error generating outfit suggestions: {str(e)}"
+            "error": f"Error extracting clothing item: {str(e)}"
         }
 
 if __name__ == "__main__":
