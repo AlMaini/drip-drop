@@ -54,7 +54,7 @@ def process_uploaded_image(uploaded_file: UploadFile) -> Image.Image:
         if image.mode != 'RGB':
             image = image.convert('RGB')
             
-        # Resize if too large (Gemini has size limits)
+        # Resize if too large (Gemini has size limits) while maintaining aspect ratio
         max_size = (1024, 1024)
         if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
             image.thumbnail(max_size, Image.Resampling.LANCZOS)
@@ -172,7 +172,7 @@ async def try_on_clothes(
             processed_images.append(processed_image)
         
         # Create the try-on prompt
-        prompt = "Make the person wear the clothes shown in these images. Create a realistic visualization of how the clothing items would look when worn by the person, maintaining proper fit, proportions, and styling. Do not change the colors of the clothes."
+        prompt = "Make the person wear the clothes shown in these images. Create a realistic visualization of how the clothing items would look when worn by the person, maintaining proper fit, proportions, and styling. Do not change the colors of the clothes. Maintain the aspect ratio from the first image."
         
         # Prepare content for Gemini
         contents = [prompt]

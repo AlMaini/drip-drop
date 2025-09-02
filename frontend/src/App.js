@@ -98,7 +98,7 @@ function ExtractClothingTab() {
       <h2>Extract Clothing Item</h2>
       <p>Upload an image containing a clothing item to create a professional product photo</p>
       
-      <form onSubmit={handleSubmit} className="generator-form">
+      <form onSubmit={handleSubmit} className={`generator-form ${loading ? 'loading-overlay' : ''}`}>
         <div className="upload-section">
           <label htmlFor="extract-image" className="upload-label">
             Select Clothing Image:
@@ -122,9 +122,20 @@ function ExtractClothingTab() {
         </div>
 
         <button type="submit" disabled={loading || !image} className="submit-btn">
+          {loading && <span className="loading-spinner"></span>}
           {loading ? 'Extracting...' : 'Extract Clothing'}
         </button>
       </form>
+
+      {loading && (
+        <div className="loading-message">
+          <span className="loading-spinner"></span>
+          Processing your image - this may take a few moments...
+          <div className="loading-progress">
+            <div className="loading-progress-bar"></div>
+          </div>
+        </div>
+      )}
 
       {error && <div className="error-message">{error}</div>}
 
@@ -232,7 +243,7 @@ function TryOnTab() {
       <h2>Try On Clothes</h2>
       <p>Upload a photo of a person and clothing items to see them wearing the clothes</p>
       
-      <form onSubmit={handleSubmit} className="generator-form">
+      <form onSubmit={handleSubmit} className={`generator-form ${loading ? 'loading-overlay' : ''}`}>
         <div className="upload-section">
           <label htmlFor="person-image" className="upload-label">
             Select Person Image:
@@ -289,9 +300,20 @@ function TryOnTab() {
         </div>
 
         <button type="submit" disabled={loading || !personImage || clothingImages.length === 0} className="submit-btn">
+          {loading && <span className="loading-spinner"></span>}
           {loading ? 'Generating Try-On...' : 'Try On Clothes'}
         </button>
       </form>
+
+      {loading && (
+        <div className="loading-message">
+          <span className="loading-spinner"></span>
+          Generating your try-on - this may take a few moments...
+          <div className="loading-progress">
+            <div className="loading-progress-bar"></div>
+          </div>
+        </div>
+      )}
 
       {error && <div className="error-message">{error}</div>}
 
@@ -383,7 +405,7 @@ function DebugTab() {
       <h2>Debug - Image Generator</h2>
       <p>Original image generation functionality for debugging</p>
       
-      <form onSubmit={handleSubmit} className="generator-form">
+      <form onSubmit={handleSubmit} className={`generator-form ${loading ? 'loading-overlay' : ''}`}>
         <div className="upload-section">
           <label htmlFor="debug-images" className="upload-label">
             Upload Reference Images (up to 5):
@@ -432,9 +454,20 @@ function DebugTab() {
         </div>
 
         <button type="submit" disabled={loading} className="submit-btn">
+          {loading && <span className="loading-spinner"></span>}
           {loading ? 'Generating...' : 'Generate Image'}
         </button>
       </form>
+
+      {loading && (
+        <div className="loading-message">
+          <span className="loading-spinner"></span>
+          Generating your image - this may take a few moments...
+          <div className="loading-progress">
+            <div className="loading-progress-bar"></div>
+          </div>
+        </div>
+      )}
 
       {error && <div className="error-message">{error}</div>}
 
