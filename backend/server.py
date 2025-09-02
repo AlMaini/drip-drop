@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from google import genai
-from google.genai import types
 from PIL import Image
 from dotenv import load_dotenv
 
@@ -173,7 +172,7 @@ async def try_on_clothes(
             processed_images.append(processed_image)
         
         # Create the try-on prompt
-        prompt = "Make the person wear the clothes shown in these images. Create a realistic visualization of how the clothing items would look when worn by the person, maintaining proper fit, proportions, and styling."
+        prompt = "Make the person wear the clothes shown in these images. Create a realistic visualization of how the clothing items would look when worn by the person, maintaining proper fit, proportions, and styling. Do not change the colors of the clothes."
         
         # Prepare content for Gemini
         contents = [prompt]
