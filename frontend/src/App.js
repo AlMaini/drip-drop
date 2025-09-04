@@ -29,6 +29,18 @@ function App() {
           >
             Debug
           </button>
+          <button 
+            className={`tab-button ${activeTab === 'quality' ? 'active' : ''}`}
+            onClick={() => setActiveTab('quality')}
+          >
+            Check Photo Quality
+          </button>
+          <button 
+            className={`tab-button ${activeTab === 'itemize' ? 'active' : ''}`}
+            onClick={() => setActiveTab('itemize')}
+          >
+            Itemize Clothing
+          </button>
         </div>
 
         {/* Tab Content */}
@@ -36,6 +48,8 @@ function App() {
           {activeTab === 'extract' && <ExtractClothingTab />}
           {activeTab === 'tryon' && <TryOnTab />}
           {activeTab === 'debug' && <DebugTab />}
+          {activeTab === 'quality' && <CheckQualityTab />}
+          {activeTab === 'itemize' && <ItemizeClothingTab />}
         </div>
       </header>
     </div>
@@ -481,6 +495,431 @@ function DebugTab() {
               className="generated-image"
             />
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Check Quality Tab Component
+function CheckQualityTab() {
+  const [image, setImage] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImage(file);
+      setError('');
+      setResult(null);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!image) {
+      setError('Please select an image');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', image);
+
+      const response = await fetch('http://localhost:8000/check-clothing-quality', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      // Log the entire JSON response to console
+      console.log('Check Photo Quality API Response:', JSON.stringify(data, null, 2));
+
+      if (data.success) {
+        setResult(data);
+      } else {
+        setError(data.error || 'Failed to check image quality');
+      }
+    } catch (err) {
+      setError('Error connecting to server: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getQualityIndicator = (quality) => {
+    const qualityMap = {
+      'excellent': { class: 'quality-excellent', label: 'Excellent' },
+      'good': { class: 'quality-good', label: 'Good' },
+      'poor': { class: 'quality-poor', label: 'Poor' }
+    };
+    return qualityMap[quality] || { class: 'quality-unknown', label: 'Unknown' };
+  };
+
+  const getConfidenceColor = (confidence) => {
+    if (confidence >= 0.8) return 'confidence-high';
+    if (confidence >= 0.6) return 'confidence-medium';
+    return 'confidence-low';
+  };
+
+  return (
+    <div className="tab-panel">
+      <h2>Check Photo Quality</h2>
+      <p>Upload an image to check if it's a professional studio quality photo of a single clothing item</p>
+      
+      <form onSubmit={handleSubmit} className={`generator-form ${loading ? 'loading-overlay' : ''}`}>
+        <div className="upload-section">
+          <label htmlFor="quality-image" className="upload-label">
+            Select Image to Check:
+          </label>
+          <input
+            type="file"
+            id="quality-image"
+            accept="image/*"
+            onChange={handleImageUpload}
+            disabled={loading}
+          />
+          {image && (
+            <div className="image-preview">
+              <img
+                src={URL.createObjectURL(image)}
+                alt="Image to check"
+                onLoad={(e) => URL.revokeObjectURL(e.target.src)}
+              />
+            </div>
+          )}
+        </div>
+
+        <button type="submit" disabled={loading || !image} className="submit-btn">
+          {loading && <span className="loading-spinner"></span>}
+          {loading ? 'Analyzing...' : 'Check Quality'}
+        </button>
+      </form>
+
+      {loading && (
+        <div className="loading-message">
+          <span className="loading-spinner"></span>
+          Analyzing image quality - this may take a few moments...
+        </div>
+      )}
+
+      {error && <div className="error-message">{error}</div>}
+
+      {result && result.analysis && (
+        <div className="result-section quality-analysis">
+          <h3>Quality Analysis Results:</h3>
+          <div className="analysis-grid">
+            <div className="analysis-item">
+              <span className="label">Professional Quality:</span>
+              <span className={`value ${result.analysis.is_professional ? 'positive' : 'negative'}`}>
+                {result.analysis.is_professional ? '✓ Yes' : '✗ No'}
+              </span>
+            </div>
+            
+            <div className="analysis-item">
+              <span className="label">Single Item:</span>
+              <span className={`value ${result.analysis.is_single_item ? 'positive' : 'negative'}`}>
+                {result.analysis.is_single_item ? '✓ Yes' : '✗ No'}
+              </span>
+            </div>
+            
+            {result.analysis.item_type && (
+              <div className="analysis-item">
+                <span className="label">Item Type:</span>
+                <span className="value">{result.analysis.item_type}</span>
+              </div>
+            )}
+            
+            {result.analysis.background_quality && (
+              <div className="analysis-item">
+                <span className="label">Background Quality:</span>
+                <span className={`value quality-badge ${getQualityIndicator(result.analysis.background_quality).class}`}>
+                  {getQualityIndicator(result.analysis.background_quality).label}
+                </span>
+              </div>
+            )}
+            
+            {result.analysis.lighting_quality && (
+              <div className="analysis-item">
+                <span className="label">Lighting Quality:</span>
+                <span className={`value quality-badge ${getQualityIndicator(result.analysis.lighting_quality).class}`}>
+                  {getQualityIndicator(result.analysis.lighting_quality).label}
+                </span>
+              </div>
+            )}
+            
+            {result.analysis.overall_confidence !== undefined && (
+              <div className="analysis-item">
+                <span className="label">Confidence:</span>
+                <span className={`value confidence-badge ${getConfidenceColor(result.analysis.overall_confidence)}`}>
+                  {Math.round(result.analysis.overall_confidence * 100)}%
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {result.analysis.reasoning && (
+            <div className="analysis-reasoning">
+              <h4>Analysis Reasoning:</h4>
+              <p>{result.analysis.reasoning}</p>
+            </div>
+          )}
+          
+          {result.analysis.issues && result.analysis.issues.length > 0 && (
+            <div className="analysis-issues">
+              <h4>Issues Found:</h4>
+              <ul>
+                {result.analysis.issues.map((issue, index) => (
+                  <li key={index}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {result.filename && (
+            <div className="analysis-meta">
+              <small>File: {result.filename}</small>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Itemize Clothing Tab Component
+function ItemizeClothingTab() {
+  const [image, setImage] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractedResults, setExtractedResults] = useState(null);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImage(file);
+      setError('');
+      setResult(null);
+      setExtractedResults(null);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!image) {
+      setError('Please select an image');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', image);
+
+      const response = await fetch('http://localhost:8000/itemize-clothing', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      // Log the entire JSON response to console
+      console.log('Itemize Clothing API Response:', JSON.stringify(data, null, 2));
+
+      if (data.success) {
+        setResult(data);
+      } else {
+        setError(data.error || 'Failed to itemize clothing');
+      }
+    } catch (err) {
+      setError('Error connecting to server: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExtractSpecific = async () => {
+    if (!image || !result || !result.clothing_items || result.clothing_items.length === 0) {
+      setError('No clothing items to extract');
+      return;
+    }
+
+    setExtracting(true);
+    setError('');
+    setExtractedResults(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', image);
+      formData.append('clothing_items', JSON.stringify(result.clothing_items));
+
+      const response = await fetch('http://localhost:8000/extract-clothes-specific', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      // Log the entire JSON response to console
+      console.log('Extract Clothes Specific API Response:', JSON.stringify(data, null, 2));
+
+      if (data.success) {
+        setExtractedResults(data);
+      } else {
+        setError(data.error || 'Failed to extract specific clothing items');
+      }
+    } catch (err) {
+      setError('Error connecting to server: ' + err.message);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  return (
+    <div className="tab-panel">
+      <h2>Itemize Clothing</h2>
+      <p>Upload an image to get a detailed list of all clothing items visible in the photo</p>
+      
+      <form onSubmit={handleSubmit} className={`generator-form ${loading ? 'loading-overlay' : ''}`}>
+        <div className="upload-section">
+          <label htmlFor="itemize-image" className="upload-label">
+            Select Image to Analyze:
+          </label>
+          <input
+            type="file"
+            id="itemize-image"
+            accept="image/*"
+            onChange={handleImageUpload}
+            disabled={loading}
+          />
+          {image && (
+            <div className="image-preview">
+              <img
+                src={URL.createObjectURL(image)}
+                alt="Image to analyze"
+                onLoad={(e) => URL.revokeObjectURL(e.target.src)}
+              />
+            </div>
+          )}
+        </div>
+
+        <button type="submit" disabled={loading || !image} className="submit-btn">
+          {loading && <span className="loading-spinner"></span>}
+          {loading ? 'Analyzing...' : 'Itemize Clothing'}
+        </button>
+      </form>
+
+      {loading && (
+        <div className="loading-message">
+          <span className="loading-spinner"></span>
+          Analyzing clothing items - this may take a few moments...
+        </div>
+      )}
+
+      {error && <div className="error-message">{error}</div>}
+
+      {result && (
+        <div className="result-section clothing-itemization">
+          <h3>Clothing Items Found:</h3>
+          <div className="itemization-summary">
+            <span className="item-count">{result.item_count} item{result.item_count !== 1 ? 's' : ''} detected</span>
+            {result.filename && <span className="filename">in {result.filename}</span>}
+          </div>
+          
+          {result.clothing_items && result.clothing_items.length > 0 ? (
+            <div className="clothing-items-list">
+              {result.clothing_items.map((item, index) => (
+                <div key={index} className="clothing-item">
+                  <span className="item-number">{index + 1}</span>
+                  <span className="item-description">{item}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="no-items">
+              <p>No clothing items were detected in this image.</p>
+            </div>
+          )}
+          
+          {result.clothing_items && result.clothing_items.length > 0 && (
+            <div className="extract-actions">
+              <button 
+                onClick={handleExtractSpecific} 
+                disabled={extracting || !image}
+                className="extract-btn"
+              >
+                {extracting && <span className="loading-spinner"></span>}
+                {extracting ? 'Extracting Items...' : 'Extract Individual Items'}
+              </button>
+              <p className="extract-description">
+                Create professional product photos for each detected item
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {extracting && (
+        <div className="loading-message">
+          <span className="loading-spinner"></span>
+          Extracting individual clothing items - this may take several minutes...
+        </div>
+      )}
+
+      {extractedResults && (
+        <div className="result-section extracted-items">
+          <h3>Extracted Clothing Items:</h3>
+          <div className="extraction-summary">
+            <span className="extraction-count">
+              {extractedResults.successful_extractions} of {extractedResults.total_items} items extracted successfully
+            </span>
+          </div>
+          
+          <div className="extracted-images-grid">
+            {extractedResults.extracted_images.map((extraction, index) => (
+              <div key={index} className={`extracted-item ${extraction.success ? 'success' : 'error'}`}>
+                <div className="extraction-header">
+                  <h4 className="item-title">{extraction.item}</h4>
+                  {extraction.success ? (
+                    <span className="status-badge success">✓ Success</span>
+                  ) : (
+                    <span className="status-badge error">✗ Failed</span>
+                  )}
+                </div>
+                
+                {extraction.success && extraction.generated_image_base64 ? (
+                  <div className="extracted-image-container">
+                    <img
+                      src={`data:image/png;base64,${extraction.generated_image_base64}`}
+                      alt={extraction.item}
+                      className="extracted-image"
+                    />
+                    {extraction.description && (
+                      <p className="extraction-description">{extraction.description}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="extraction-error">
+                    <p>{extraction.error || 'Failed to extract this item'}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
