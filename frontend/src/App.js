@@ -1,6 +1,35 @@
 import React, { useState } from 'react';
 import './App.css';
 
+// Helper function to download base64 image
+const downloadImage = (base64String, filename) => {
+  try {
+    // Convert base64 to blob
+    const byteCharacters = atob(base64String);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/png' });
+    
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error downloading image:', error);
+    alert('Error downloading image. Please try again.');
+  }
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState('extract');
 
@@ -157,11 +186,20 @@ function ExtractClothingTab() {
         <div className="result-section">
           <h3>Professional Product Photo:</h3>
           {result.generated_image_base64 && (
-            <img
-              src={`data:image/png;base64,${result.generated_image_base64}`}
-              alt="Extracted clothing"
-              className="generated-image"
-            />
+            <div className="image-container">
+              <img
+                src={`data:image/png;base64,${result.generated_image_base64}`}
+                alt="Extracted clothing"
+                className="generated-image"
+              />
+              <button 
+                className="download-btn"
+                onClick={() => downloadImage(result.generated_image_base64, 'extracted-clothing.png')}
+                title="Download image"
+              >
+                ⬇ Download
+              </button>
+            </div>
           )}
           {result.description && (
             <p className="result-description">{result.description}</p>
@@ -334,17 +372,72 @@ function TryOnTab() {
       {result && (
         <div className="result-section">
           <h3>Try-On Result:</h3>
-          {result.generated_image_base64 && (
-            <img
-              src={`data:image/png;base64,${result.generated_image_base64}`}
-              alt="Try-on result"
-              className="generated-image"
-            />
+          {result.final_image_base64 && (
+            <div className="image-container">
+              <img
+                src={`data:image/png;base64,${result.final_image_base64}`}
+                alt="Try-on result"
+                className="generated-image"
+              />
+              <button 
+                className="download-btn"
+                onClick={() => downloadImage(result.final_image_base64, 'try-on-result.png')}
+                title="Download final result"
+              >
+                ⬇ Download
+              </button>
+            </div>
           )}
           {result.description && (
             <p className="result-description">{result.description}</p>
           )}
-          <p className="result-info">Images processed: {result.images_processed}</p>
+          <div className="result-stats">
+            <p className="result-info">Images processed: {result.images_processed}</p>
+            <p className="result-info">Total iterations: {result.total_iterations}</p>
+            <p className="result-info">Successful iterations: {result.successful_iterations}</p>
+            <p className="result-info">Clothing items: {result.total_clothing_items}</p>
+          </div>
+          
+          {result.iteration_results && result.iteration_results.length > 0 && (
+            <div className="iteration-details">
+              <h4>Iteration Details:</h4>
+              <div className="iterations-grid">
+                {result.iteration_results.map((iteration, index) => (
+                  <div key={index} className={`iteration-item ${iteration.success ? 'success' : 'error'}`}>
+                    <div className="iteration-header">
+                      <span className="iteration-number">Iteration {iteration.iteration}</span>
+                      <span className={`status-badge ${iteration.success ? 'success' : 'error'}`}>
+                        {iteration.success ? '✓' : '✗'}
+                      </span>
+                    </div>
+                    <p className="iteration-info">{iteration.items_added} item(s) applied</p>
+                    {iteration.description && (
+                      <p className="iteration-description">{iteration.description}</p>
+                    )}
+                    {iteration.error && (
+                      <p className="iteration-error">{iteration.error}</p>
+                    )}
+                    {iteration.success && iteration.generated_image_base64 && (
+                      <div className="image-container">
+                        <img
+                          src={`data:image/png;base64,${iteration.generated_image_base64}`}
+                          alt={`Iteration ${iteration.iteration} result`}
+                          className="iteration-image"
+                        />
+                        <button 
+                          className="download-btn small"
+                          onClick={() => downloadImage(iteration.generated_image_base64, `try-on-iteration-${iteration.iteration}.png`)}
+                          title={`Download iteration ${iteration.iteration} result`}
+                        >
+                          ⬇
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -489,11 +582,20 @@ function DebugTab() {
         <div className="result-section">
           <h3>Generated Image:</h3>
           {result.generated_image_base64 && (
-            <img
-              src={`data:image/png;base64,${result.generated_image_base64}`}
-              alt="Generated"
-              className="generated-image"
-            />
+            <div className="image-container">
+              <img
+                src={`data:image/png;base64,${result.generated_image_base64}`}
+                alt="Generated"
+                className="generated-image"
+              />
+              <button 
+                className="download-btn"
+                onClick={() => downloadImage(result.generated_image_base64, 'generated-image.png')}
+                title="Download generated image"
+              >
+                ⬇ Download
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -903,11 +1005,20 @@ function ItemizeClothingTab() {
                 
                 {extraction.success && extraction.generated_image_base64 ? (
                   <div className="extracted-image-container">
-                    <img
-                      src={`data:image/png;base64,${extraction.generated_image_base64}`}
-                      alt={extraction.item}
-                      className="extracted-image"
-                    />
+                    <div className="image-container">
+                      <img
+                        src={`data:image/png;base64,${extraction.generated_image_base64}`}
+                        alt={extraction.item}
+                        className="extracted-image"
+                      />
+                      <button 
+                        className="download-btn small"
+                        onClick={() => downloadImage(extraction.generated_image_base64, `extracted-${extraction.item.replace(/[^a-zA-Z0-9]/g, '-')}.png`)}
+                        title={`Download ${extraction.item}`}
+                      >
+                        ⬇
+                      </button>
+                    </div>
                     {extraction.description && (
                       <p className="extraction-description">{extraction.description}</p>
                     )}

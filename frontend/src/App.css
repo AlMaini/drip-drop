@@ -794,3 +794,205 @@
     max-height: 250px;
   }
 }
+
+/* Try-On Results Styles */
+.result-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+  text-align: left;
+}
+
+.result-stats .result-info {
+  background: white;
+  padding: 12px 15px;
+  border-radius: 6px;
+  border-left: 3px solid #3498db;
+  font-weight: 500;
+  color: #2c3e50;
+  font-size: 0.95rem;
+}
+
+.iteration-details {
+  margin-top: 30px;
+  text-align: left;
+}
+
+.iteration-details h4 {
+  color: #2c3e50;
+  margin-bottom: 20px;
+  font-size: 1.3rem;
+}
+
+.iterations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.iteration-item {
+  background: white;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.iteration-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
+}
+
+.iteration-item.success {
+  border-left: 4px solid #27ae60;
+}
+
+.iteration-item.error {
+  border-left: 4px solid #e74c3c;
+}
+
+.iteration-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.iteration-number {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.iteration-info {
+  color: #7f8c8d;
+  font-size: 0.9rem;
+  margin: 8px 0;
+}
+
+.iteration-description {
+  color: #555;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 12px 0;
+  font-style: italic;
+}
+
+.iteration-error {
+  color: #e74c3c;
+  font-size: 0.9rem;
+  background: #fff5f5;
+  padding: 10px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+
+.iteration-image {
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-top: 15px;
+  background: #f8f9fa;
+}
+
+@media (max-width: 768px) {
+  .result-stats {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .iterations-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+  
+  .iteration-item {
+    padding: 15px;
+  }
+  
+  .iteration-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  
+  .iteration-image {
+    max-height: 150px;
+  }
+}
+
+/* Image Container and Download Button Styles */
+.image-container {
+  position: relative;
+  display: inline-block;
+  margin: 10px 0;
+}
+
+.download-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(52, 152, 219, 0.9);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 10;
+}
+
+.download-btn:hover {
+  background: rgba(41, 128, 185, 0.95);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.download-btn:active {
+  transform: translateY(0px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.download-btn.small {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  min-width: 32px;
+  justify-content: center;
+}
+
+/* Ensure image containers have proper positioning context */
+.image-container img {
+  display: block;
+  border-radius: 8px;
+}
+
+.extracted-image-container .image-container {
+  margin-bottom: 10px;
+}
+
+/* Mobile responsive adjustments for download buttons */
+@media (max-width: 768px) {
+  .download-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    top: 8px;
+    right: 8px;
+  }
+  
+  .download-btn.small {
+    padding: 4px 8px;
+    font-size: 10px;
+    min-width: 28px;
+  }
+}
