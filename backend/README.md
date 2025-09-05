@@ -34,12 +34,7 @@ This is the FastAPI backend server for the Drip Drop application that integrates
 ## Running the Server
 
 ```bash
-python server.py
-```
-
-Or using uvicorn directly:
-```bash
-uvicorn server:app --reload --host 0.0.0.0 --port 8000
+./start.sh
 ```
 
 The server will be available at `http://localhost:8000`
