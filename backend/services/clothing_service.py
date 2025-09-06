@@ -3,6 +3,7 @@ import json
 import time
 import base64
 import os
+import asyncio
 from typing import List
 from fastapi import UploadFile
 from PIL import Image
@@ -681,3 +682,128 @@ def check_batch_status(batch_job_id: str) -> dict:
             "status": "error",
             "error": f"Error checking batch status: {str(e)}"
         }
+
+async def extract_specific_clothing_items_concurrent(image: UploadFile, clothing_items: str) -> dict:
+    """Extract specific clothing items from photo using concurrent async requests for better performance"""
+    client = get_gemini_client()
+    
+    # Process uploaded image
+    processed_image = process_uploaded_image(image)
+    
+    # Parse the clothing items list
+    try:
+        items_list = json.loads(clothing_items)
+        if not isinstance(items_list, list):
+            raise ValueError("clothing_items must be a JSON array")
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "error": "Invalid JSON format for clothing_items"
+        }
+    
+    if not items_list:
+        return {
+            "success": False,
+            "error": "No clothing items specified"
+        }
+    
+    # Send all requests concurrently using async Gemini client
+    start_time = time.time()
+    print(f"Sending {len(items_list)} concurrent async requests...")
+    
+    # Create async tasks for all items - these will all be sent simultaneously
+    tasks = []
+    for item in items_list:
+        # Create the extraction prompt for specific item
+        prompt = f"Take the {item} in this photo and make a full view image of just that item with a white background as a professionally shot image for a clothing item on an online store. Focus only on the {item} and exclude all other clothing items or objects."
+        
+        # Prepare content for Gemini
+        contents = [prompt, processed_image]
+        
+        # Create async task using aio client - this doesn't execute yet
+        task = client.aio.models.generate_content(
+            model=editing_model,
+            contents=contents
+        )
+        tasks.append((item, task))
+    
+    # Execute all requests concurrently and wait for all to complete
+    try:
+        # Extract just the tasks for asyncio.gather
+        async_tasks = [task for _, task in tasks]
+        responses = await asyncio.gather(*async_tasks, return_exceptions=True)
+        
+        requests_completed_time = time.time() - start_time
+        print(f"All {len(items_list)} async requests completed in {requests_completed_time:.2f}s")
+        
+        # Process all responses
+        extracted_images = []
+        for i, (item, _) in enumerate(tasks):
+            response = responses[i]
+            
+            if isinstance(response, Exception):
+                extracted_images.append({
+                    "item": item,
+                    "success": False,
+                    "error": f"Request exception for {item}: {str(response)}",
+                    "generated_image_base64": None,
+                    "description": None
+                })
+                continue
+            
+            # Process successful response
+            try:
+                generated_image_base64 = None
+                description_text = None
+                
+                for part in response.candidates[0].content.parts:
+                    if part.text is not None:
+                        description_text = part.text
+                    elif part.inline_data is not None:
+                        image_data = Image.open(io.BytesIO(part.inline_data.data))
+                        padded_image = image_utils.pad_image_to_square(image_data)
+                        generated_image_base64 = image_to_base64(padded_image)
+                
+                extracted_images.append({
+                    "item": item,
+                    "success": True,
+                    "generated_image_base64": generated_image_base64,
+                    "description": description_text if description_text else f"Professional {item} product image generated"
+                })
+                
+            except Exception as process_error:
+                extracted_images.append({
+                    "item": item,
+                    "success": False,
+                    "error": f"Error processing response for {item}: {str(process_error)}",
+                    "generated_image_base64": None,
+                    "description": None
+                })
+        
+    except Exception as e:
+        print(f"Error in concurrent processing: {str(e)}")
+        # Fallback to error responses for all items
+        extracted_images = []
+        for item in items_list:
+            extracted_images.append({
+                "item": item,
+                "success": False,
+                "error": f"Concurrent processing failed: {str(e)}",
+                "generated_image_base64": None,
+                "description": None
+            })
+    
+    processing_time = time.time() - start_time
+    
+    # Count successful extractions
+    successful_extractions = sum(1 for result in extracted_images if result["success"])
+    
+    return {
+        "success": True,
+        "extracted_images": extracted_images,
+        "total_items": len(items_list),
+        "successful_extractions": successful_extractions,
+        "filename": image.filename,
+        "processing_time": round(processing_time, 2),
+        "processing_method": "concurrent_async"
+    }

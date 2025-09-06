@@ -170,3 +170,26 @@ async def get_batch_status(batch_job_id: str):
             "status": "error",
             "error": f"Error checking batch status: {str(e)}"
         }
+
+@router.post("/extract-clothes-concurrent")
+async def extract_clothes_concurrent(
+    image: UploadFile = File(...),
+    clothing_items: str = Form(...)
+):
+    """
+    Extract specific clothing items using concurrent async requests for better performance
+    
+    Args:
+        image: Single image containing clothing items
+        clothing_items: JSON string array of specific clothing items to extract
+    """
+    try:
+        result = await clothing_service.extract_specific_clothing_items_concurrent(image, clothing_items)
+        return result
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error in concurrent extraction: {str(e)}",
+            "extracted_images": []
+        }

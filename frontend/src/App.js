@@ -805,6 +805,7 @@ function ItemizeClothingTab() {
   const [error, setError] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [extractedResults, setExtractedResults] = useState(null);
+  const [batchStatus, setBatchStatus] = useState(null);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -813,6 +814,7 @@ function ItemizeClothingTab() {
       setError('');
       setResult(null);
       setExtractedResults(null);
+      setBatchStatus(null);
     }
   };
 
@@ -872,6 +874,7 @@ function ItemizeClothingTab() {
     setExtracting(true);
     setError('');
     setExtractedResults(null);
+    setBatchStatus('Processing concurrent extraction...');
 
     try {
       const formData = new FormData();
@@ -884,7 +887,8 @@ function ItemizeClothingTab() {
       ];
       formData.append('clothing_items', JSON.stringify(allItems));
 
-      const response = await fetch('http://localhost:8000/api/extract-clothes-specific', {
+      // Submit concurrent extraction request
+      const response = await fetch('http://localhost:8000/api/extract-clothes-concurrent', {
         method: 'POST',
         body: formData,
       });
@@ -892,19 +896,25 @@ function ItemizeClothingTab() {
       const data = await response.json();
 
       // Log the entire JSON response to console
-      console.log('Extract Clothes Specific API Response:', JSON.stringify(data, null, 2));
+      console.log('Extract Clothes Concurrent API Response:', JSON.stringify(data, null, 2));
 
       if (data.success) {
+        // The concurrent endpoint processes all items in parallel and returns results immediately
         setExtractedResults(data);
+        setExtracting(false);
+        setBatchStatus(`Extraction completed! (${data.processing_time}s using ${data.processing_method})`);
       } else {
-        setError(data.error || 'Failed to extract specific clothing items');
+        setError(data.error || 'Failed to extract clothing items');
+        setExtracting(false);
+        setBatchStatus(null);
       }
     } catch (err) {
       setError('Error connecting to server: ' + err.message);
-    } finally {
       setExtracting(false);
+      setBatchStatus(null);
     }
   };
+
 
   return (
     <div className="tab-panel">
@@ -1020,7 +1030,10 @@ function ItemizeClothingTab() {
       {extracting && (
         <div className="loading-message">
           <span className="loading-spinner"></span>
-          Extracting individual clothing items and accessories - this may take several minutes...
+          <div className="batch-status-info">
+            <p>Extracting individual clothing items and accessories using concurrent processing...</p>
+            {batchStatus && <p className="batch-status">{batchStatus}</p>}
+          </div>
         </div>
       )}
 
