@@ -117,7 +117,7 @@ function ExtractClothingTab() {
       const formData = new FormData();
       formData.append('image', image);
 
-      const response = await fetch('http://localhost:8000/extract-clothing', {
+      const response = await fetch('http://localhost:8000/api/extract-clothing', {
         method: 'POST',
         body: formData,
       });
@@ -271,7 +271,7 @@ function TryOnTab() {
         formData.append('images', image);
       });
 
-      const response = await fetch('http://localhost:8000/try-on-clothes', {
+      const response = await fetch('http://localhost:8000/api/try-on-clothes', {
         method: 'POST',
         body: formData,
       });
@@ -488,7 +488,7 @@ function DebugTab() {
         formData.append('context_images', image);
       });
 
-      const response = await fetch('http://localhost:8000/generate-image', {
+      const response = await fetch('http://localhost:8000/api/generate-image', {
         method: 'POST',
         body: formData,
       });
@@ -635,7 +635,7 @@ function CheckQualityTab() {
       const formData = new FormData();
       formData.append('image', image);
 
-      const response = await fetch('http://localhost:8000/check-clothing-quality', {
+      const response = await fetch('http://localhost:8000/api/check-clothing-quality', {
         method: 'POST',
         body: formData,
       });
@@ -832,7 +832,7 @@ function ItemizeClothingTab() {
       const formData = new FormData();
       formData.append('image', image);
 
-      const response = await fetch('http://localhost:8000/itemize-clothing', {
+      const response = await fetch('http://localhost:8000/api/itemize-clothing', {
         method: 'POST',
         body: formData,
       });
@@ -855,8 +855,17 @@ function ItemizeClothingTab() {
   };
 
   const handleExtractSpecific = async () => {
-    if (!image || !result || !result.clothing_items || result.clothing_items.length === 0) {
-      setError('No clothing items to extract');
+    if (!image || !result) {
+      setError('No items to extract');
+      return;
+    }
+
+    // Check if we have any items to extract
+    const hasClothing = result.clothing_items && result.clothing_items.length > 0;
+    const hasAccessories = result.accessories && result.accessories.length > 0;
+    
+    if (!hasClothing && !hasAccessories) {
+      setError('No clothing items or accessories to extract');
       return;
     }
 
@@ -867,9 +876,15 @@ function ItemizeClothingTab() {
     try {
       const formData = new FormData();
       formData.append('image', image);
-      formData.append('clothing_items', JSON.stringify(result.clothing_items));
+      
+      // Combine clothing items and accessories for extraction
+      const allItems = [
+        ...(result.clothing_items || []),
+        ...(result.accessories || [])
+      ];
+      formData.append('clothing_items', JSON.stringify(allItems));
 
-      const response = await fetch('http://localhost:8000/extract-clothes-specific', {
+      const response = await fetch('http://localhost:8000/api/extract-clothes-specific', {
         method: 'POST',
         body: formData,
       });
@@ -894,7 +909,7 @@ function ItemizeClothingTab() {
   return (
     <div className="tab-panel">
       <h2>Itemize Clothing</h2>
-      <p>Upload an image to get a detailed list of all clothing items visible in the photo</p>
+      <p>Upload an image to get a detailed list of all clothing items and accessories visible in the photo</p>
       
       <form onSubmit={handleSubmit} className={`generator-form ${loading ? 'loading-overlay' : ''}`}>
         <div className="upload-section">
@@ -928,7 +943,7 @@ function ItemizeClothingTab() {
       {loading && (
         <div className="loading-message">
           <span className="loading-spinner"></span>
-          Analyzing clothing items - this may take a few moments...
+          Analyzing clothing items and accessories - this may take a few moments...
         </div>
       )}
 
@@ -936,28 +951,55 @@ function ItemizeClothingTab() {
 
       {result && (
         <div className="result-section clothing-itemization">
-          <h3>Clothing Items Found:</h3>
+          <h3>Items Found:</h3>
           <div className="itemization-summary">
             <span className="item-count">{result.item_count} item{result.item_count !== 1 ? 's' : ''} detected</span>
             {result.filename && <span className="filename">in {result.filename}</span>}
           </div>
           
-          {result.clothing_items && result.clothing_items.length > 0 ? (
-            <div className="clothing-items-list">
-              {result.clothing_items.map((item, index) => (
-                <div key={index} className="clothing-item">
-                  <span className="item-number">{index + 1}</span>
-                  <span className="item-description">{item}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="no-items">
-              <p>No clothing items were detected in this image.</p>
+          {/* Clothing Items Section */}
+          {result.clothing_items && result.clothing_items.length > 0 && (
+            <div className="items-section">
+              <h4 className="section-title">Clothing Items ({result.clothing_items.length})</h4>
+              <div className="clothing-items-list">
+                {result.clothing_items.map((item, index) => (
+                  <div key={`clothing-${index}`} className="clothing-item">
+                    <span className="item-number">{index + 1}</span>
+                    <span className="item-description">{item}</span>
+                    <span className="item-type">Clothing</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           
-          {result.clothing_items && result.clothing_items.length > 0 && (
+          {/* Accessories Section */}
+          {result.accessories && result.accessories.length > 0 && (
+            <div className="items-section">
+              <h4 className="section-title">Accessories ({result.accessories.length})</h4>
+              <div className="clothing-items-list">
+                {result.accessories.map((item, index) => (
+                  <div key={`accessory-${index}`} className="clothing-item">
+                    <span className="item-number">{index + 1}</span>
+                    <span className="item-description">{item}</span>
+                    <span className="item-type">Accessory</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* No items found */}
+          {(!result.clothing_items || result.clothing_items.length === 0) && 
+           (!result.accessories || result.accessories.length === 0) && (
+            <div className="no-items">
+              <p>No clothing items or accessories were detected in this image.</p>
+            </div>
+          )}
+          
+          {/* Extract button - show if we have any items */}
+          {((result.clothing_items && result.clothing_items.length > 0) || 
+            (result.accessories && result.accessories.length > 0)) && (
             <div className="extract-actions">
               <button 
                 onClick={handleExtractSpecific} 
@@ -978,13 +1020,13 @@ function ItemizeClothingTab() {
       {extracting && (
         <div className="loading-message">
           <span className="loading-spinner"></span>
-          Extracting individual clothing items - this may take several minutes...
+          Extracting individual clothing items and accessories - this may take several minutes...
         </div>
       )}
 
       {extractedResults && (
         <div className="result-section extracted-items">
-          <h3>Extracted Clothing Items:</h3>
+          <h3>Extracted Items:</h3>
           <div className="extraction-summary">
             <span className="extraction-count">
               {extractedResults.successful_extractions} of {extractedResults.total_items} items extracted successfully

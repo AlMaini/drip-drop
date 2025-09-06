@@ -65,12 +65,13 @@ async def itemize_clothing(
         image: Single image to analyze
     """
     try:
-        clothing_items = await clothing_service.identify_clothing_items(image)
+        outfit_items = await clothing_service.identify_clothing_items(image)
         
         return {
             "success": True,
-            "clothing_items": clothing_items,
-            "item_count": len(clothing_items),
+            "clothing_items": outfit_items["clothing_items"],
+            "accessories": outfit_items["accessories"],
+            "item_count": len(outfit_items["clothing_items"]) + len(outfit_items["accessories"]),
             "filename": image.filename
         }
         
@@ -78,7 +79,8 @@ async def itemize_clothing(
         return {
             "success": False,
             "error": f"Error itemizing clothing: {str(e)}",
-            "clothing_items": []
+            "clothing_items": [],
+            "accessories": []
         }
 
 @router.post("/extract-clothes-specific")
@@ -102,4 +104,69 @@ async def extract_clothes_specific(
             "success": False,
             "error": f"Error extracting specific clothing items: {str(e)}",
             "extracted_images": []
+        }
+
+@router.post("/extract-clothes-batch")
+async def extract_clothes_batch(
+    image: UploadFile = File(...),
+    clothing_items: str = Form(...)
+):
+    """
+    Extract specific clothing items using batch mode for efficiency
+    
+    Args:
+        image: Single image containing clothing items
+        clothing_items: JSON string array of specific clothing items to extract
+    """
+    try:
+        result = await clothing_service.extract_specific_clothing_items_batch(image, clothing_items)
+        return result
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error in batch extraction: {str(e)}",
+            "extracted_images": []
+        }
+
+@router.post("/extract-clothes-batch-file")
+async def extract_clothes_batch_file(
+    image: UploadFile = File(...),
+    clothing_items: str = Form(...)
+):
+    """
+    Extract specific clothing items using file-based batch mode for large requests
+    
+    Args:
+        image: Single image containing clothing items
+        clothing_items: JSON string array of specific clothing items to extract
+    """
+    try:
+        result = await clothing_service.extract_specific_clothing_items_batch_file(image, clothing_items)
+        return result
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error in file-based batch extraction: {str(e)}",
+            "batch_job_id": None
+        }
+
+@router.get("/batch-status/{batch_job_id}")
+async def get_batch_status(batch_job_id: str):
+    """
+    Check the status of a batch job and retrieve results if completed
+    
+    Args:
+        batch_job_id: The ID of the batch job to check
+    """
+    try:
+        result = clothing_service.check_batch_status(batch_job_id)
+        return result
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "status": "error",
+            "error": f"Error checking batch status: {str(e)}"
         }

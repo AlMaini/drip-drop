@@ -1,8 +1,13 @@
 import io
 import json
+import time
+import base64
+import os
 from typing import List
 from fastapi import UploadFile
 from PIL import Image
+from google import genai
+from google.genai import types
 
 from .gemini_client import get_gemini_client, editing_model, analysis_model
 from .image_processing import process_uploaded_image, image_to_base64
@@ -137,20 +142,20 @@ def check_professional_clothing_image(image: Image.Image) -> dict:
             "is_single_item": False
         }
 
-async def identify_clothing_items(image: UploadFile) -> List[str]:
+async def identify_clothing_items(image: UploadFile) -> dict:
     """Analyze uploaded image and return a list of clothing items found"""
     processed_image = process_uploaded_image(image)
     return itemize_photo(processed_image)
 
-def itemize_photo(image: Image.Image) -> List[str]:
+def itemize_photo(image: Image.Image) -> dict:
     """
-    Analyze an image and return a list of clothing items found
+    Analyze an image and return a dict of clothing items and accessories found
     
     Args:
         image: PIL Image object to analyze
         
     Returns:
-        List[str]: List of clothing items found in the image
+        dict: Dict containing clothing items and accessories found in the image
     """
     client = get_gemini_client()
     
@@ -159,15 +164,18 @@ def itemize_photo(image: Image.Image) -> List[str]:
         prompt = """
         Analyze this image and identify all the clothing items visible in the photo.
         
-        Please respond with a JSON array containing only the clothing items you can clearly identify.
+        Please respond with a JSON object containing clothing items and accessories you can clearly identify.
         Use specific, descriptive names for each item (e.g., "blue denim jeans", "white cotton t-shirt", "black leather jacket").
         
-        Only include actual clothing items (shirts, pants, dresses, shoes, accessories like belts, hats, etc.).
+        Only include actual clothing items (shirts, pants, dresses, shoes, etc.).
+        For accessories like hats, scarves, or bags, include them only if they are clearly visible and part of the outfit. Add them to a separate list.
+
         Do not include people, backgrounds, or non-clothing objects.
         
-        Response format: ["item1", "item2", "item3", ...]
+        Response format: 
+        {"clothing_items": ["item1", "item2", "item3", ...], "accessories": ["accessory1", "accessory2", ...]}
         
-        Only respond with the JSON array, no additional text.
+        Only respond with the JSON object, no additional text.
         """
         
         # Prepare content for Gemini
@@ -187,7 +195,7 @@ def itemize_photo(image: Image.Image) -> List[str]:
                 break
         
         if not analysis_text:
-            return []
+            return {"clothing_items": [], "accessories": []}
         
         # Try to parse JSON response
         try:
@@ -199,22 +207,31 @@ def itemize_photo(image: Image.Image) -> List[str]:
                 cleaned_text = cleaned_text[:-3]  # Remove ```
             cleaned_text = cleaned_text.strip()
             
-            clothing_items = json.loads(cleaned_text)
+            response_data = json.loads(cleaned_text)
             
-            # Ensure we return a list
-            if isinstance(clothing_items, list):
-                return clothing_items
-            else:
-                return []
+            # Ensure response has the expected structure
+            if isinstance(response_data, dict):
+                clothing_items = response_data.get("clothing_items", [])
+                accessories = response_data.get("accessories", [])
+                return {
+                    "clothing_items": clothing_items if isinstance(clothing_items, list) else [],
+                    "accessories": accessories if isinstance(accessories, list) else []
+                }
+            
+            # Fallback: if response is just a list, treat as clothing items
+            if isinstance(response_data, list):
+                return {"clothing_items": response_data, "accessories": []}
+                
+            return {"clothing_items": [], "accessories": []}
                 
         except json.JSONDecodeError:
-            # If JSON parsing fails, return empty list
-            return []
+            # If JSON parsing fails, return empty dict
+            return {"clothing_items": [], "accessories": []}
             
     except Exception as e:
-        # Log error and return empty list
+        # Log error and return empty dict
         print(f"Error itemizing photo: {str(e)}")
-        return []
+        return {"clothing_items": [], "accessories": []}
 
 async def extract_specific_clothing_items(image: UploadFile, clothing_items: str) -> dict:
     """Extract specific clothing items from photo and create professional product images"""
@@ -296,3 +313,371 @@ async def extract_specific_clothing_items(image: UploadFile, clothing_items: str
         "successful_extractions": successful_extractions,
         "filename": image.filename
     }
+
+async def extract_specific_clothing_items_batch(image: UploadFile, clothing_items: str) -> dict:
+    """Extract specific clothing items from photo using batch mode for efficiency"""
+    client = get_gemini_client()
+    
+    # Process uploaded image
+    processed_image = process_uploaded_image(image)
+    
+    # Parse the clothing items list
+    try:
+        items_list = json.loads(clothing_items)
+        if not isinstance(items_list, list):
+            raise ValueError("clothing_items must be a JSON array")
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "error": "Invalid JSON format for clothing_items"
+        }
+    
+    if not items_list:
+        return {
+            "success": False,
+            "error": "No clothing items specified"
+        }
+    
+    try:
+        # Convert processed image to base64 for batch requests
+        if hasattr(processed_image, 'data'):
+            # If it's already inline data
+            image_base64 = base64.b64encode(processed_image.data).decode('utf-8')
+            mime_type = processed_image.mime_type
+        else:
+            # If it's a PIL Image, convert it
+            buffer = io.BytesIO()
+            processed_image.save(buffer, format='PNG')
+            image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            mime_type = 'image/png'
+        
+        # Create batch requests for all clothing items
+        batch_requests = []
+        for i, item in enumerate(items_list):
+            prompt = f"Take the {item} in this photo and make a full view image of just that item with a white background as a professionally shot image for a clothing item on an online store. Focus only on the {item} and exclude all other clothing items or objects."
+            
+            request = {
+                'contents': [{
+                    'parts': [
+                        {'text': prompt},
+                        {
+                            'inline_data': {
+                                'mime_type': mime_type,
+                                'data': image_base64
+                            }
+                        }
+                    ],
+                    'role': 'user'
+                }]
+            }
+            
+            batch_requests.append(request)
+        
+        # Create and submit batch job
+        batch_job = client.batches.create(
+            model="gemini-2.5-flash-image-preview",
+            src=batch_requests,
+            config={
+                'display_name': f"clothing-extraction-{int(time.time())}"
+            }
+        )
+        
+        print(f"Created batch job: {batch_job.name}")
+        
+        # Poll for completion
+        max_wait_time = 1800  # 30 minutes max wait
+        poll_interval = 10    # Check every 10 seconds
+        elapsed_time = 0
+        
+        completed_states = {'JOB_STATE_SUCCEEDED', 'JOB_STATE_FAILED', 'JOB_STATE_CANCELLED'}
+        
+        while elapsed_time < max_wait_time:
+            current_job = client.batches.get(name=batch_job.name)
+            print(f"Job status: {current_job.state.name} (elapsed: {elapsed_time}s)")
+            
+            if current_job.state.name in completed_states:
+                break
+                
+            time.sleep(poll_interval)
+            elapsed_time += poll_interval
+        
+        # Check final job status
+        final_job = client.batches.get(name=batch_job.name)
+        
+        if final_job.state.name != 'JOB_STATE_SUCCEEDED':
+            return {
+                "success": False,
+                "error": f"Batch job failed with status: {final_job.state.name}",
+                "job_error": str(final_job.error) if hasattr(final_job, 'error') else None
+            }
+        
+        # Process results
+        extracted_images = []
+        
+        if final_job.dest and final_job.dest.inlined_responses:
+            # Process inline responses
+            for i, inline_response in enumerate(final_job.dest.inlined_responses):
+                item = items_list[i] if i < len(items_list) else f"item_{i}"
+                
+                if inline_response.response:
+                    try:
+                        # Extract generated image and description
+                        generated_image_base64 = None
+                        description_text = None
+                        
+                        for part in inline_response.response.candidates[0].content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                description_text = part.text
+                            elif hasattr(part, 'inline_data') and part.inline_data:
+                                # Convert image data to base64
+                                image_data = Image.open(io.BytesIO(part.inline_data.data))
+                                generated_image_base64 = image_to_base64(image_data)
+                        
+                        extracted_images.append({
+                            "item": item,
+                            "success": True,
+                            "generated_image_base64": generated_image_base64,
+                            "description": description_text if description_text else f"Professional {item} product image generated"
+                        })
+                        
+                    except Exception as process_error:
+                        extracted_images.append({
+                            "item": item,
+                            "success": False,
+                            "error": f"Error processing response for {item}: {str(process_error)}",
+                            "generated_image_base64": None,
+                            "description": None
+                        })
+                
+                elif inline_response.error:
+                    extracted_images.append({
+                        "item": item,
+                        "success": False,
+                        "error": f"Batch processing error for {item}: {str(inline_response.error)}",
+                        "generated_image_base64": None,
+                        "description": None
+                    })
+        
+        else:
+            return {
+                "success": False,
+                "error": "No results found in batch response"
+            }
+        
+        # Count successful extractions
+        successful_extractions = sum(1 for result in extracted_images if result["success"])
+        
+        return {
+            "success": True,
+            "extracted_images": extracted_images,
+            "total_items": len(items_list),
+            "successful_extractions": successful_extractions,
+            "filename": image.filename,
+            "batch_job_id": batch_job.name,
+            "processing_time": elapsed_time
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Batch processing failed: {str(e)}"
+        }
+
+async def extract_specific_clothing_items_batch_file(image: UploadFile, clothing_items: str) -> dict:
+    """Extract specific clothing items using file-based batch mode for large requests"""
+    client = get_gemini_client()
+    
+    # Process uploaded image and upload to File API
+    processed_image = process_uploaded_image(image)
+    
+    # Upload image to File API for reuse across batch requests
+    if hasattr(processed_image, 'data'):
+        # Create temporary file from inline data
+        temp_filename = f"temp_image_{int(time.time())}.png"
+        with open(temp_filename, 'wb') as f:
+            f.write(processed_image.data)
+        
+        uploaded_image = client.files.upload(
+            file=temp_filename,
+            config=types.UploadFileConfig(
+                display_name=f'clothing_image_{int(time.time())}',
+                mime_type=processed_image.mime_type
+            )
+        )
+        
+        # Clean up temp file
+        os.remove(temp_filename)
+    else:
+        # Save PIL Image and upload
+        temp_filename = f"temp_image_{int(time.time())}.png"
+        processed_image.save(temp_filename)
+        
+        uploaded_image = client.files.upload(
+            file=temp_filename,
+            config=types.UploadFileConfig(
+                display_name=f'clothing_image_{int(time.time())}',
+                mime_type='image/png'
+            )
+        )
+        
+        # Clean up temp file
+        os.remove(temp_filename)
+    
+    # Parse clothing items
+    try:
+        items_list = json.loads(clothing_items)
+        if not isinstance(items_list, list):
+            raise ValueError("clothing_items must be a JSON array")
+    except json.JSONDecodeError:
+        return {"success": False, "error": "Invalid JSON format for clothing_items"}
+    
+    if not items_list:
+        return {"success": False, "error": "No clothing items specified"}
+    
+    # Create JSONL file with batch requests
+    jsonl_filename = f"clothing_batch_{int(time.time())}.jsonl"
+    
+    with open(jsonl_filename, "w") as f:
+        for i, item in enumerate(items_list):
+            prompt = f"Take the {item} in this photo and make a full view image of just that item with a white background as a professionally shot image for a clothing item on an online store. Focus only on the {item} and exclude all other clothing items or objects."
+            
+            request_data = {
+                "key": f"item_{i}_{item}",
+                "request": {
+                    "contents": [{
+                        "parts": [
+                            {"text": prompt},
+                            {"file_data": {"file_uri": uploaded_image.uri}}
+                        ]
+                    }]
+                }
+            }
+            
+            f.write(json.dumps(request_data) + "\n")
+    
+    # Upload JSONL file
+    batch_input_file = client.files.upload(
+        file=jsonl_filename,
+        config=types.UploadFileConfig(
+            display_name=f'clothing_batch_input_{int(time.time())}',
+            mime_type='application/jsonl'
+        )
+    )
+    
+    # Clean up local JSONL file
+    os.remove(jsonl_filename)
+    
+    # Create batch job
+    batch_job = client.batches.create(
+        model="gemini-2.5-flash-image-preview",
+        src=batch_input_file.name,
+        config={
+            'display_name': f"clothing-extraction-file-{int(time.time())}"
+        }
+    )
+    
+    # Return job information for async processing
+    return {
+        "success": True,
+        "batch_job_id": batch_job.name,
+        "status": "submitted",
+        "message": "Batch job submitted. Use check_batch_status() to monitor progress.",
+        "total_items": len(items_list),
+        "filename": image.filename
+    }
+
+def check_batch_status(batch_job_id: str) -> dict:
+    """Check the status of a batch job and retrieve results if completed"""
+    client = get_gemini_client()
+    
+    try:
+        batch_job = client.batches.get(name=batch_job_id)
+        
+        if batch_job.state.name == 'JOB_STATE_SUCCEEDED':
+            # Download and process results
+            if batch_job.dest and batch_job.dest.file_name:
+                result_file_name = batch_job.dest.file_name
+                file_content = client.files.download(file=result_file_name)
+                
+                extracted_images = []
+                
+                for line in file_content.decode('utf-8').splitlines():
+                    if line.strip():
+                        result = json.loads(line)
+                        
+                        # Extract item name from key
+                        item_key = result.get('key', 'unknown')
+                        item_name = item_key.split('_', 2)[-1] if '_' in item_key else item_key
+                        
+                        if 'response' in result:
+                            response = result['response']
+                            generated_image_base64 = None
+                            description_text = None
+                            
+                            # Process response parts
+                            candidates = response.get('candidates', [])
+                            if candidates and 'content' in candidates[0]:
+                                parts = candidates[0]['content'].get('parts', [])
+                                
+                                for part in parts:
+                                    if 'text' in part and part['text']:
+                                        description_text = part['text']
+                                    elif 'inlineData' in part and part['inlineData']:
+                                        # Convert to base64
+                                        image_data = base64.b64decode(part['inlineData']['data'])
+                                        image = Image.open(io.BytesIO(image_data))
+                                        generated_image_base64 = image_to_base64(image)
+                            
+                            extracted_images.append({
+                                "item": item_name,
+                                "success": True,
+                                "generated_image_base64": generated_image_base64,
+                                "description": description_text or f"Professional {item_name} product image generated"
+                            })
+                        
+                        elif 'error' in result:
+                            extracted_images.append({
+                                "item": item_name,
+                                "success": False,
+                                "error": str(result['error']),
+                                "generated_image_base64": None,
+                                "description": None
+                            })
+                
+                successful_extractions = sum(1 for result in extracted_images if result["success"])
+                
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "extracted_images": extracted_images,
+                    "total_items": len(extracted_images),
+                    "successful_extractions": successful_extractions
+                }
+            
+        elif batch_job.state.name == 'JOB_STATE_FAILED':
+            return {
+                "success": False,
+                "status": "failed",
+                "error": str(batch_job.error) if hasattr(batch_job, 'error') else "Unknown error"
+            }
+        
+        elif batch_job.state.name == 'JOB_STATE_CANCELLED':
+            return {
+                "success": False,
+                "status": "cancelled"
+            }
+        
+        else:
+            return {
+                "success": True,
+                "status": "pending",
+                "current_state": batch_job.state.name,
+                "message": "Job is still processing..."
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "status": "error",
+            "error": f"Error checking batch status: {str(e)}"
+        }
