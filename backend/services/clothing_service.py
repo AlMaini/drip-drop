@@ -22,7 +22,7 @@ async def extract_single_clothing_item(image: UploadFile) -> dict:
     processed_image = process_uploaded_image(image)
     
     # Create the extraction prompt
-    prompt = "Take the clothing item in this photo and make a full view image of the item with a white background as a professionally shot image for a clothing item on an online store."
+    prompt = "Take the clothing item in this photo and make a full view image of the item with a white background as a professionally shot image for a clothing item on an online store. Do not change any details from the clothes. Be as accurate as possible."
     
     # Prepare content for Gemini
     contents = [prompt, processed_image]
@@ -264,8 +264,8 @@ async def extract_specific_clothing_items(image: UploadFile, clothing_items: str
     for item in items_list:
         try:
             # Create the extraction prompt for specific item
-            prompt = f"Take the {item} in this photo and make a full view image of just that item with a white background as a professionally shot image for a clothing item on an online store. Focus only on the {item} and exclude all other clothing items or objects."
-            
+            prompt = f"Take the {item} in this photo and make a full view image of just that item with a white background as a professionally shot image for a clothing item on an online store. Focus only on the {item} and exclude all other clothing items or objects. Do not change any details from the clothes. Be as accurate as possible."
+
             # Prepare content for Gemini
             contents = [prompt, processed_image]
             
@@ -715,7 +715,7 @@ async def extract_specific_clothing_items_concurrent(image: UploadFile, clothing
     tasks = []
     for item in items_list:
         # Create the extraction prompt for specific item
-        prompt = f"Take the {item} in this photo and make a full view image of just that item with a white background as a professionally shot image for a clothing item on an online store. Focus only on the {item} and exclude all other clothing items or objects."
+        prompt = f"Take the {item} in this photo and make a full view image of just that item with a white background as a professionally shot image for a clothing item on an online store. Focus only on the {item} and exclude all other clothing items or objects. Do not change any details from the clothes. Be as accurate as possible."
         
         # Prepare content for Gemini
         contents = [prompt, processed_image]
