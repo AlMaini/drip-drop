@@ -138,3 +138,44 @@ async def perform_iterative_tryon(images: List[UploadFile]) -> dict:
         "images_processed": len(processed_images),
         "description": "Iterative try-on visualization completed with item analysis"
     }
+
+async def perform_fit_transfer(clothing_image: UploadFile, person_image: UploadFile) -> dict:
+    """
+    Perform virtual try-on by transferring clothing onto a model image
+    
+    Args:
+        clothing_image: Image of the clothing item
+        model_image: Image of the model/person
+    """
+    client = get_gemini_client()
+    
+    # Process uploaded images
+    processed_clothing_image = process_uploaded_image(clothing_image)
+    processed_person_image = process_uploaded_image(person_image)
+    
+    prompt = "Make the person in the first image wear the outfit shown in the second image. Create a realistic visualization of how the outfit would look when worn by the person, maintaining proper fit, proportions, and styling. Do not change the color of the outfit. Maintain the pose of the person."
+
+    try:
+        response = client.models.generate_content(
+            model=editing_model,
+            contents=[prompt, processed_person_image, processed_clothing_image]
+        )
+        
+        generated_image_base64 = None
+        description_text = None
+        
+        for part in response.candidates[0].content.parts:
+            if part.text is not None:
+                description_text = part.text
+            elif part.inline_data is not None:
+                image_data = Image.open(io.BytesIO(part.inline_data.data))
+                generated_image_base64 = image_to_base64(image_data)
+        
+        return {
+            "success": True,
+            "tryon_image_base64": generated_image_base64,
+            "description": description_text if description_text else "Fit transfer completed"
+        }
+
+    except Exception as e:
+        raise RuntimeError(f"Error during fit transfer: {str(e)}")
