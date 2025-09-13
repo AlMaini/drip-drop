@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import image_generation, virtual_tryon, clothing_analysis, health
+from routers import image_generation, virtual_tryon, clothing_analysis, health, auth, supabase
 
 # Initialize FastAPI app
 app = FastAPI(title="Drip Drop Image Generator", description="Generate images using Gemini AI with context images")
@@ -18,6 +18,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(supabase.router)
 app.include_router(image_generation.router)
 app.include_router(virtual_tryon.router)
 app.include_router(clothing_analysis.router)

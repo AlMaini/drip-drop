@@ -68,7 +68,7 @@ async def perform_iterative_tryon(images: List[UploadFile]) -> dict:
             else:
                 items_text = " and ".join(current_descriptions)
                
-            prompt = f"Make the person in the first image wear the {items_text} shown in the following images. Create a realistic visualization of how the clothing items would look when worn by the person, maintaining proper fit, proportions, and styling. Do not change the colors of the clothes. Maintain the pose of the person."
+            prompt = f"Make the person in the first image wear the {items_text} shown in the following images. Create a realistic visualization of how the clothing items would look when worn by the person, maintaining proper fit, proportions, and styling. Maintain the pose of the person. Do not add any additional items or accessories."
 
             # Prepare content for Gemini: current result + current clothing batch
             contents = [prompt, current_result_image]

@@ -4,7 +4,7 @@ import time
 import base64
 import os
 import asyncio
-from typing import List
+from typing import List, Dict, Any
 from fastapi import UploadFile
 from PIL import Image
 from google import genai
@@ -12,7 +12,105 @@ from google.genai import types
 
 from .gemini_client import get_gemini_client, editing_model, analysis_model
 from .image_processing import process_uploaded_image, image_to_base64
+from .clothing_identifier import identify_clothing_from_image
+from .authService import get_supabase_client
 import processing.utility.image_utils as image_utils
+
+async def upload_image_to_supabase(image_base64: str, filename: str) -> str:
+    """Upload base64 image to Supabase storage and return public URL"""
+    try:
+        supabase = get_supabase_client()
+        
+        # Convert base64 to bytes
+        image_bytes = base64.b64decode(image_base64)
+        
+        # Create unique filename
+        unique_filename = f'{int(time.time())}-{filename}'
+        print(f"Uploading image: {unique_filename}, size: {len(image_bytes)} bytes")
+        
+        # Upload to Supabase storage
+        result = supabase.storage.from_('clothing-items').upload(
+            unique_filename,
+            image_bytes,
+            file_options={'content-type': 'image/png'}
+        )
+        
+        print(f"Upload result: {result}")
+        
+        if result and hasattr(result, 'path'):
+            # Get public URL using the path from the upload response
+            public_url = supabase.storage.from_('clothing-items').get_public_url(result.path)
+            print(f"Generated public URL: {public_url}")
+            return public_url
+        else:
+            raise Exception(f"Upload failed: {result}")
+            
+    except Exception as e:
+        print(f"Error uploading image to Supabase: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        raise e
+
+async def save_clothing_item_to_db(user_id: str, name: str, category: str, 
+                                 primary_color: str = None, secondary_color: str = None, 
+                                 image_url: str = None, features: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Save clothing item to Supabase database"""
+    try:
+        supabase = get_supabase_client()
+        
+        item_data = {
+            "profile_id": user_id,
+            "name": name,
+            "category": category,
+            "primary_color": primary_color,
+            "secondary_color": secondary_color,
+            "image_url": image_url
+        }
+        
+        result = supabase.table("clothes").insert(item_data).execute()
+        
+        if result.data:
+            return result.data[0]
+        else:
+            raise Exception(f"Database insert failed: {result}")
+            
+    except Exception as e:
+        print(f"Error saving clothing item to database: {e}")
+        raise e
+
+async def update_clothing_item_image_url(item_id: str, image_url: str) -> Dict[str, Any]:
+    """Update the image URL for a clothing item in the database"""
+    try:
+        supabase = get_supabase_client()
+        
+        result = supabase.table("clothes").update({
+            "image_url": image_url
+        }).eq("id", item_id).execute()
+        
+        if result.data:
+            return result.data[0]
+        else:
+            raise Exception(f"Database update failed: {result}")
+            
+    except Exception as e:
+        print(f"Error updating clothing item image URL: {e}")
+        raise e
+
+async def find_clothing_item_by_name_and_user(user_id: str, name: str) -> Dict[str, Any]:
+    """Find a clothing item by name and user ID"""
+    try:
+        supabase = get_supabase_client()
+        
+        result = supabase.table("clothes").select("*").eq("profile_id", user_id).eq("name", name).limit(1).execute()
+        
+        if result.data and len(result.data) > 0:
+            return result.data[0]
+        else:
+            return None
+            
+    except Exception as e:
+        print(f"Error finding clothing item: {e}")
+        return None
 
 async def extract_single_clothing_item(image: UploadFile) -> dict:
     """Extract clothing item from photo and create professional product image"""
@@ -150,85 +248,61 @@ async def identify_clothing_items(image: UploadFile) -> dict:
 
 def itemize_photo(image: Image.Image) -> dict:
     """
-    Analyze an image and return a dict of clothing items and accessories found
+    Analyze an image and return a dict of clothing items and accessories found with their features
     
     Args:
         image: PIL Image object to analyze
         
     Returns:
-        dict: Dict containing clothing items and accessories found in the image
+        dict: Dict containing clothing items and accessories found in the image with detailed features
     """
-    client = get_gemini_client()
-    
     try:
-        # Create analysis prompt
-        prompt = """
-        Analyze this image and identify all the clothing items visible in the photo.
+        # Use the identify_clothing_from_image function to get detailed clothing analysis
+        identified_items = identify_clothing_from_image(image, generate_id=False)
         
-        Please respond with a JSON object containing clothing items and accessories you can clearly identify.
-        Use specific, descriptive names for each item (e.g., "blue denim jeans", "white cotton t-shirt", "black leather jacket").
+        clothing_items = []
+        accessories = []
         
-        Only include actual clothing items (shirts, pants, dresses, shoes, etc.).
-        For accessories like hats, scarves, or bags, include them only if they are clearly visible and part of the outfit. Add them to a separate list.
-
-        Do not include people, backgrounds, or non-clothing objects.
-        
-        Response format: 
-        {"clothing_items": ["item1", "item2", "item3", ...], "accessories": ["accessory1", "accessory2", ...]}
-        
-        Only respond with the JSON object, no additional text.
-        """
-        
-        # Prepare content for Gemini
-        contents = [prompt, image]
-        
-        # Call Gemini 1.5 Flash for analysis
-        response = client.models.generate_content(
-            model=analysis_model,
-            contents=contents
-        )
-        
-        # Extract text response
-        analysis_text = None
-        for part in response.candidates[0].content.parts:
-            if part.text is not None:
-                analysis_text = part.text
-                break
-        
-        if not analysis_text:
-            return {"clothing_items": [], "accessories": []}
-        
-        # Try to parse JSON response
-        try:
-            # Clean the response text by removing markdown code blocks
-            cleaned_text = analysis_text.strip()
-            if cleaned_text.startswith('```json'):
-                cleaned_text = cleaned_text[7:]  # Remove ```json
-            if cleaned_text.endswith('```'):
-                cleaned_text = cleaned_text[:-3]  # Remove ```
-            cleaned_text = cleaned_text.strip()
+        # Process each identified item
+        for item in identified_items:
+            model = item['model']
+            clothing_type = item['type']
             
-            response_data = json.loads(cleaned_text)
+            # Create item data with name and features
+            item_data = {
+                "name": model.name,
+                "type": clothing_type,
+                "primary_color": model.primary_color,
+                "secondary_color": model.secondary_color,
+                "features": {}
+            }
             
-            # Ensure response has the expected structure
-            if isinstance(response_data, dict):
-                clothing_items = response_data.get("clothing_items", [])
-                accessories = response_data.get("accessories", [])
-                return {
-                    "clothing_items": clothing_items if isinstance(clothing_items, list) else [],
-                    "accessories": accessories if isinstance(accessories, list) else []
-                }
+            # Extract features from the model based on its type
+            # Get all attributes that are not in the base clothing model
+            base_attrs = {'item_id', 'name', 'primary_color', 'secondary_color', 'image'}
+            for attr_name in dir(model):
+                if (not attr_name.startswith('_') and 
+                    attr_name not in base_attrs and
+                    not callable(getattr(model, attr_name))):
+                    attr_value = getattr(model, attr_name)
+                    if attr_value is not None:
+                        item_data["features"][attr_name] = attr_value
             
-            # Fallback: if response is just a list, treat as clothing items
-            if isinstance(response_data, list):
-                return {"clothing_items": response_data, "accessories": []}
-                
-            return {"clothing_items": [], "accessories": []}
-                
-        except json.JSONDecodeError:
-            # If JSON parsing fails, return empty dict
-            return {"clothing_items": [], "accessories": []}
+            # Categorize as clothing item or accessory
+            accessory_types = {
+                'Hat', 'Cap', 'Belt', 'Scarf', 'Gloves', 'Sunglasses', 'Watch'
+            }
             
+            if clothing_type in accessory_types:
+                accessories.append(item_data)
+            else:
+                clothing_items.append(item_data)
+        
+        return {
+            "clothing_items": clothing_items,
+            "accessories": accessories
+        }
+        
     except Exception as e:
         # Log error and return empty dict
         print(f"Error itemizing photo: {str(e)}")
