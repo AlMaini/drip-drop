@@ -299,21 +299,19 @@ async def add_fit_to_wardrobe(
         for item in outfit_items["clothing_items"]:
             all_items.append({
                 "name": item.get("name", "Unknown Item"),
-                "type": item.get("type", "clothing"),
+                "category": item.get("type", "clothing"),
                 "primary_color": item.get("primary_color"),
                 "secondary_color": item.get("secondary_color"),
-                "features": item.get("features", {}),
-                "category": "clothing"
+                "features": item.get("features", {})
             })
         
         for item in outfit_items["accessories"]:
             all_items.append({
                 "name": item.get("name", "Unknown Accessory"),
-                "type": item.get("type", "accessory"),
+                "category": item.get("type", "accessory"),
                 "primary_color": item.get("primary_color"),
                 "secondary_color": item.get("secondary_color"),
-                "features": item.get("features", {}),
-                "category": "accessory"
+                "features": item.get("features", {})
             })
         
         # Step 3: Extract images for all items concurrently
