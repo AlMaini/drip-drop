@@ -51,9 +51,9 @@ async def upload_image_to_supabase(image_base64: str, filename: str) -> str:
         print(f"Full traceback: {traceback.format_exc()}")
         raise e
 
-async def save_clothing_item_to_db(user_id: str, name: str, category: str, 
-                                 primary_color: str = None, secondary_color: str = None, 
-                                 image_url: str = None, features: Dict[str, Any] = None) -> Dict[str, Any]:
+async def save_clothing_item_to_db(user_id: str, name: str, category: str,
+                                 primary_color: str = None, secondary_color: str = None,
+                                 image_url: str = None, is_owned: bool = True, features: Dict[str, Any] = None) -> Dict[str, Any]:
     """Save clothing item to Supabase database"""
     try:
         supabase = get_supabase_client()
@@ -64,7 +64,8 @@ async def save_clothing_item_to_db(user_id: str, name: str, category: str,
             "category": category,
             "primary_color": primary_color,
             "secondary_color": secondary_color,
-            "image_url": image_url
+            "image_url": image_url,
+            "is_owned": is_owned
         }
         
         result = supabase.table("clothes").insert(item_data).execute()
@@ -174,7 +175,8 @@ def check_professional_clothing_image(image: Image.Image) -> dict:
         3. Is the background clean/plain (preferably white or neutral)?
         4. Is the lighting professional and even?
         5. Is the clothing item the main focus and clearly visible?
-        
+        6. If it all the above is true, make sure passed = true, otherwise false.
+
         Please respond in the following JSON format:
         {
             "is_professional": true/false,
@@ -184,7 +186,8 @@ def check_professional_clothing_image(image: Image.Image) -> dict:
             "lighting_quality": "excellent/good/poor",
             "overall_confidence": 0.0-1.0,
             "issues": ["list of any issues found"],
-            "reasoning": "brief explanation of the assessment"
+            "reasoning": "brief explanation of the assessment",
+            "passed": true/false
         }
         
         Only respond with the JSON object, no additional text.
@@ -307,6 +310,193 @@ def itemize_photo(image: Image.Image) -> dict:
         # Log error and return empty dict
         print(f"Error itemizing photo: {str(e)}")
         return {"clothing_items": [], "accessories": []}
+
+async def get_user_clothes(user_id: str, owned_only: bool = None) -> List[Dict[str, Any]]:
+    """Get all clothing items for a user, optionally filtered by ownership"""
+    try:
+        supabase = get_supabase_client()
+
+        query = supabase.table("clothes").select("*").eq("profile_id", user_id)
+
+        if owned_only is not None:
+            query = query.eq("is_owned", owned_only)
+
+        result = query.execute()
+
+        return result.data if result.data else []
+
+    except Exception as e:
+        print(f"Error getting user clothes: {e}")
+        return []
+
+async def get_clothing_by_id(clothing_id: str, user_id: str = None) -> Dict[str, Any]:
+    """Get a specific clothing item by ID"""
+    try:
+        supabase = get_supabase_client()
+
+        query = supabase.table("clothes").select("*").eq("id", clothing_id)
+
+        if user_id:
+            query = query.eq("profile_id", user_id)
+
+        result = query.limit(1).execute()
+
+        if result.data and len(result.data) > 0:
+            return result.data[0]
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error getting clothing by ID: {e}")
+        return None
+
+async def update_clothing_item(item_id: str, user_id: str, **updates) -> Dict[str, Any]:
+    """Update a clothing item"""
+    try:
+        supabase = get_supabase_client()
+
+        # Filter out None values and ensure we only update allowed fields
+        allowed_fields = ['name', 'category', 'primary_color', 'secondary_color', 'size', 'is_owned']
+        update_data = {k: v for k, v in updates.items() if v is not None and k in allowed_fields}
+
+        if not update_data:
+            raise ValueError("No valid update data provided")
+
+        result = supabase.table("clothes").update(update_data).eq("id", item_id).eq("profile_id", user_id).execute()
+
+        if result.data:
+            return result.data[0]
+        else:
+            raise Exception(f"Database update failed: {result}")
+
+    except Exception as e:
+        print(f"Error updating clothing item: {e}")
+        raise e
+
+async def delete_clothing_item(item_id: str, user_id: str) -> bool:
+    """Delete a clothing item"""
+    try:
+        supabase = get_supabase_client()
+
+        result = supabase.table("clothes").delete().eq("id", item_id).eq("profile_id", user_id).execute()
+
+        return len(result.data) > 0 if result.data else False
+
+    except Exception as e:
+        print(f"Error deleting clothing item: {e}")
+        return False
+
+async def get_clothes_by_category(user_id: str, category: str, owned_only: bool = None) -> List[Dict[str, Any]]:
+    """Get clothing items by category for a user"""
+    try:
+        supabase = get_supabase_client()
+
+        query = supabase.table("clothes").select("*").eq("profile_id", user_id).eq("category", category)
+
+        if owned_only is not None:
+            query = query.eq("is_owned", owned_only)
+
+        result = query.order("created_at", desc=True).execute()
+
+        return result.data if result.data else []
+
+    except Exception as e:
+        print(f"Error getting clothes by category: {e}")
+        return []
+
+async def get_unique_clothing_categories(user_id: str) -> List[str]:
+    """Get list of unique clothing categories for a user"""
+    try:
+        supabase = get_supabase_client()
+
+        result = supabase.table("clothes").select("category").eq("profile_id", user_id).execute()
+
+        if result.data:
+            categories = list(set([item['category'] for item in result.data if item.get('category')]))
+            return sorted(categories)
+        else:
+            return []
+
+    except Exception as e:
+        print(f"Error getting unique clothing categories: {e}")
+        return []
+
+async def smart_save_clothing_item(user_id: str, name: str, category: str,
+                                 primary_color: str = None, secondary_color: str = None,
+                                 size: str = None, is_owned: bool = True,
+                                 image: UploadFile = None) -> Dict[str, Any]:
+    """
+    Smart clothing item creation that checks quality first and extracts if needed
+
+    This function:
+    1. Checks if the image is already professional quality
+    2. If quality check passes, uses the original image
+    3. If quality check fails, extracts the clothing item to create professional image
+    4. Saves the clothing item to database with the best available image
+    """
+    try:
+        if not image:
+            raise ValueError("Image is required for clothing item creation")
+
+        # Step 1: Check image quality
+        print(f"Checking image quality for clothing item: {name}")
+        processed_image = process_uploaded_image(image)
+        quality_analysis = check_professional_clothing_image(processed_image)
+
+        use_original_image = quality_analysis.get("passed", False)
+        print(f"Quality check result - passed: {use_original_image}")
+
+        if use_original_image:
+            # Use original image since it passed quality check
+            print("Using original image (quality check passed)")
+            image_base64 = image_to_base64(processed_image)
+
+        else:
+            # Extract clothing item to create professional image
+            print("Extracting clothing item (quality check failed)")
+
+            # Reset image file pointer
+            await image.seek(0)
+
+            # Extract single clothing item
+            extraction_result = await extract_single_clothing_item(image)
+
+            if not extraction_result.get("generated_image_base64"):
+                # Fallback to original image if extraction fails
+                print("Extraction failed, falling back to original image")
+                await image.seek(0)
+                processed_image = process_uploaded_image(image)
+                image_base64 = image_to_base64(processed_image)
+            else:
+                print("Successfully extracted clothing item")
+                image_base64 = extraction_result["generated_image_base64"]
+
+        # Step 2: Upload image to Supabase storage
+        filename = f"{name.replace(' ', '-').lower()}-{int(time.time())}.png"
+        image_url = await upload_image_to_supabase(image_base64, filename)
+        print(f"Image uploaded successfully: {image_url}")
+
+        # Step 3: Save to database
+        saved_item = await save_clothing_item_to_db(
+            user_id=user_id,
+            name=name,
+            category=category,
+            primary_color=primary_color,
+            secondary_color=secondary_color,
+            image_url=image_url,
+            is_owned=is_owned
+        )
+
+        # Add metadata about the process
+        saved_item["quality_analysis"] = quality_analysis
+        saved_item["used_original_image"] = use_original_image
+        saved_item["extraction_performed"] = not use_original_image
+
+        return saved_item
+
+    except Exception as e:
+        print(f"Error in smart clothing item creation: {e}")
+        raise e
 
 async def extract_specific_clothing_items(image: UploadFile, clothing_items: str) -> dict:
     """Extract specific clothing items from photo and create professional product images"""
